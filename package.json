@@ -13,7 +13,8 @@
 		"tauri:open": "open \"src-tauri/target/release/bundle/macos/OC Config.app\"",
 		"tauri:run": "open -n \"src-tauri/target/release/bundle/macos/OC Config.app\"",
 		"start": "next start --port 3101",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"tauri:build:dmg": "tauri build --bundles dmg"
 	},
 	"dependencies": {
 		"@apidevtools/json-schema-ref-parser": "^15.2.2",
