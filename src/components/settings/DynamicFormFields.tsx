@@ -49,6 +49,81 @@ function FieldLabel({
 	);
 }
 
+function normalizeValidationPath(path: string): string {
+	if (!path || path === "/") return "";
+	return path
+		.replace(/^\//, "")
+		.split("/")
+		.filter(Boolean)
+		.map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))
+		.join(".");
+}
+
+function getValidationTargetPath(error: ValidationError): string {
+	const path = normalizeValidationPath(error.path);
+	const missingProperty = error.params?.missingProperty;
+
+	if (error.keyword === "required" && typeof missingProperty === "string") {
+		return path ? `${path}.${missingProperty}` : missingProperty;
+	}
+
+	return path;
+}
+
+function getValidationErrorsForPath(
+	validationErrors: ValidationError[],
+	path: string,
+): ValidationError[] {
+	return validationErrors.filter(
+		(error) => getValidationTargetPath(error) === path,
+	);
+}
+
+function schemaHasPath(schema: JSONSchema, path: string): boolean {
+	if (!path) return true;
+
+	let current: JSONSchema | undefined = schema;
+	for (const part of path.split(".")) {
+		const propertySchema = current?.properties?.[part] as
+			| JSONSchema
+			| undefined;
+		if (propertySchema) {
+			current = propertySchema;
+			continue;
+		}
+
+		const additionalSchema = current?.additionalProperties as
+			| JSONSchema
+			| undefined;
+		if (additionalSchema && typeof additionalSchema === "object") {
+			current = additionalSchema;
+			continue;
+		}
+
+		return false;
+	}
+
+	return true;
+}
+
+function FieldErrors({ errors }: { errors: ValidationError[] }) {
+	if (errors.length === 0) return null;
+
+	return (
+		<div className="space-y-1 pt-1">
+			{errors.map((error, index) => (
+				<div
+					key={`${error.path}-${error.keyword}-${index}`}
+					className="flex items-start gap-1.5 text-xs text-red-400 px-1"
+				>
+					<AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
+					<span>{error.message}</span>
+				</div>
+			))}
+		</div>
+	);
+}
+
 function DynamicInputField({
 	label,
 	value,
@@ -312,6 +387,7 @@ function DynamicObjectField({
 	modelVariants,
 	depth = 0,
 	entityModel,
+	validationErrors = [],
 }: FieldProps & { depth?: number }) {
 	const obj = (value as Record<string, unknown>) ?? {};
 
@@ -351,6 +427,7 @@ function DynamicObjectField({
 				dynamicKeys={dynamicKeys}
 				additionalSchema={additionalSchema}
 				entityModel={entityModel}
+				validationErrors={validationErrors}
 			/>
 		);
 	}
@@ -370,6 +447,7 @@ function DynamicObjectField({
 					modelVariants={modelVariants}
 					depth={depth + 1}
 					entityModel={obj.model as string | undefined}
+					validationErrors={validationErrors}
 				/>
 			))}
 			{dynamicKeys.map((key) => (
@@ -384,6 +462,7 @@ function DynamicObjectField({
 					modelVariants={modelVariants}
 					depth={depth + 1}
 					entityModel={obj.model as string | undefined}
+					validationErrors={validationErrors}
 				/>
 			))}
 		</div>
@@ -474,9 +553,10 @@ function ObjectTreeNode({
 	const styledModelName = modelInfo?.name ?? itemModel;
 	const styles = styledModelName ? getProviderStyle(styledModelName) : null;
 
-	const pathErrors = validationErrors.filter(
-		(e) => e.path === path || e.path.startsWith(`${path}.`),
-	);
+	const pathErrors = validationErrors.filter((error) => {
+		const targetPath = getValidationTargetPath(error);
+		return targetPath === path || targetPath.startsWith(`${path}.`);
+	});
 
 	return (
 		<div className="border border-slate-800/60 rounded-xl overflow-hidden bg-slate-900/20">
@@ -550,19 +630,6 @@ function ObjectTreeNode({
 			</div>
 			{isExpanded && (
 				<div className="p-4 space-y-4 bg-slate-900/10">
-					{pathErrors.length > 0 && (
-						<div className="space-y-1.5 mb-3">
-							{pathErrors.map((error) => (
-								<div
-									key={`${error.path}-${error.keyword}`}
-									className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg"
-								>
-									<AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-									<span>{error.message}</span>
-								</div>
-							))}
-						</div>
-					)}
 					{definedProps.map(([key, propSchema]) => {
 						const isPresent = Object.prototype.hasOwnProperty.call(obj, key);
 						const canRemoveDefined = isPresent && canRemoveKey(key);
@@ -596,25 +663,9 @@ function ObjectTreeNode({
 						);
 					})}
 					{dynamicKeys.map((key) => {
-						const keyErrors = validationErrors.filter(
-							(e) => e.path === `${path}.${key}`,
-						);
 						const valueSchema = additionalSchema ?? inferSchema(obj[key]);
 						return (
 							<div key={key} className="relative">
-								{keyErrors.length > 0 && (
-									<div className="space-y-1 mb-2">
-										{keyErrors.map((error) => (
-											<div
-												key={`${error.path}-${error.keyword}`}
-												className="flex items-start gap-1.5 text-xs text-red-400"
-											>
-												<AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
-												<span>{error.message}</span>
-											</div>
-										))}
-									</div>
-								)}
 								<DynamicField
 									schema={valueSchema}
 									value={obj[key]}
@@ -712,18 +763,26 @@ function DynamicField({
 	depth = 0,
 	labelAction,
 	entityModel,
+	validationErrors = [],
 }: FieldProps) {
 	if (!schema) return null;
 
 	const fieldLabel = schema.title ?? label ?? path.split(".").pop() ?? "";
+	const fieldErrors = getValidationErrorsForPath(validationErrors, path);
+	const renderWithErrors = (field: React.ReactNode) => (
+		<div className="space-y-1.5">
+			{field}
+			<FieldErrors errors={fieldErrors} />
+		</div>
+	);
 
 	if (schema.type === "boolean") {
-		return (
+		return renderWithErrors(
 			<DynamicToggleField
 				label={fieldLabel}
 				value={value as boolean | undefined}
 				onChange={(v) => onChange(v)}
-			/>
+			/>,
 		);
 	}
 
@@ -747,7 +806,7 @@ function DynamicField({
 			: [];
 		const hasVariants = variantOptions.length > 0;
 
-		return (
+		return renderWithErrors(
 			<div className="space-y-1.5">
 				<FieldLabel label={fieldLabel} action={labelAction} />
 				<div className="flex gap-2">
@@ -774,25 +833,25 @@ function DynamicField({
 						<X className="w-4 h-4" />
 					</button>
 				</div>
-			</div>
+			</div>,
 		);
 	}
 
 	if (schema.enum && Array.isArray(schema.enum)) {
-		return (
+		return renderWithErrors(
 			<DynamicSelectField
 				label={fieldLabel}
 				value={value as string | undefined}
 				onChange={(v) => onChange(v || undefined)}
 				options={schema.enum.map(String)}
 				placeholder={schema.description}
-			/>
+			/>,
 		);
 	}
 
 	if (schema.type === "string") {
 		if (path.endsWith(".model") && models) {
-			return (
+			return renderWithErrors(
 				<div className="space-y-1.5">
 					<FieldLabel label={fieldLabel} action={labelAction} />
 					<div className="flex gap-2">
@@ -813,12 +872,12 @@ function DynamicField({
 							<X className="w-4 h-4" />
 						</button>
 					</div>
-				</div>
+				</div>,
 			);
 		}
 
 		if (schema.format === "multiline" || path.includes("prompt")) {
-			return (
+			return renderWithErrors(
 				<div className="space-y-1.5">
 					<FieldLabel label={fieldLabel} action={labelAction} />
 					<textarea
@@ -828,12 +887,12 @@ function DynamicField({
 						rows={4}
 						className="w-full bg-[#161B26] border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-500 resize-none hover:border-slate-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 focus:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition-all custom-scrollbar"
 					/>
-				</div>
+				</div>,
 			);
 		}
 
 		if (schema.format === "color" || path.endsWith(".color")) {
-			return (
+			return renderWithErrors(
 				<div className="space-y-1.5">
 					<FieldLabel label={fieldLabel} action={labelAction} />
 					<div className="flex gap-3">
@@ -853,23 +912,23 @@ function DynamicField({
 							className="flex-1 bg-[#161B26] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 hover:border-slate-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 transition-all placeholder:text-slate-500"
 						/>
 					</div>
-				</div>
+				</div>,
 			);
 		}
 
-		return (
+		return renderWithErrors(
 			<DynamicInputField
 				label={fieldLabel}
 				value={value as string | undefined}
 				onChange={(v) => onChange(v || undefined)}
 				placeholder={schema.description}
 				labelAction={labelAction}
-			/>
+			/>,
 		);
 	}
 
 	if (schema.type === "number" || schema.type === "integer") {
-		return (
+		return renderWithErrors(
 			<DynamicInputField
 				label={fieldLabel}
 				type="number"
@@ -885,19 +944,19 @@ function DynamicField({
 						: undefined)
 				}
 				labelAction={labelAction}
-			/>
+			/>,
 		);
 	}
 
 	if (schema.type === "array") {
-		return (
+		return renderWithErrors(
 			<DynamicArrayField
 				label={fieldLabel}
 				value={value as string[] | undefined}
 				onChange={(v) => onChange(v.length > 0 ? v : undefined)}
 				items={schema.items as JSONSchema | undefined}
 				labelAction={labelAction}
-			/>
+			/>,
 		);
 	}
 
@@ -913,6 +972,7 @@ function DynamicField({
 				depth={depth + 1}
 				label={label}
 				labelAction={labelAction}
+				validationErrors={validationErrors}
 			/>
 		);
 	}
@@ -984,7 +1044,9 @@ function DynamicField({
 					models={models}
 					modelVariants={modelVariants}
 					depth={depth}
+					validationErrors={validationErrors}
 				/>
+				<FieldErrors errors={fieldErrors} />
 			</div>
 		);
 	}
@@ -1075,9 +1137,13 @@ export function DynamicFormFields({
 		return ps.type === "object" || ps.type === "array";
 	});
 
+	const topLevelValidationErrors = validationErrors.filter(
+		(error) => !schemaHasPath(effectiveSchema, getValidationTargetPath(error)),
+	);
+
 	return (
 		<div className="space-y-4">
-			{validationErrors && validationErrors.length > 0 && (
+			{topLevelValidationErrors.length > 0 && (
 				<div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4">
 					<div className="flex items-start gap-3">
 						<AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
@@ -1086,7 +1152,7 @@ export function DynamicFormFields({
 								Schema validation warnings
 							</h4>
 							<ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
-								{validationErrors.map((error, index) => (
+								{topLevelValidationErrors.map((error, index) => (
 									<li
 										key={`${error.path}-${index}`}
 										className="flex items-start gap-2"
@@ -1129,6 +1195,7 @@ export function DynamicFormFields({
 										path={key}
 										models={models}
 										modelVariants={modelVariants}
+										validationErrors={validationErrors}
 									/>
 								);
 							})}
@@ -1156,6 +1223,7 @@ export function DynamicFormFields({
 						models={models}
 						modelVariants={modelVariants}
 						depth={1}
+						validationErrors={validationErrors}
 						labelAction={
 							canRemoveSection ? (
 								<button
