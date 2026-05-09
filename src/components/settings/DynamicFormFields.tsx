@@ -390,7 +390,7 @@ function DynamicArrayField({
 			<div className="space-y-2">
 				{arr.map((item, index) => {
 					return (
-						<div key={`${index}-${item}`} className="flex gap-2">
+						<div key={index} className="flex gap-2">
 							{items?.enum ? (
 								<StyledSelect
 									value={item}
@@ -653,7 +653,7 @@ function ObjectTreeNode({
 	});
 
 	return (
-		<div className="border border-slate-800/60 rounded-xl overflow-hidden bg-slate-900/20">
+		<div className="relative border border-slate-800/60 rounded-xl bg-slate-900/20">
 			<div className="w-full flex items-center gap-2 px-4 py-3 bg-slate-800/40 border-b border-transparent hover:border-slate-800/60">
 				<button
 					type="button"
@@ -1173,7 +1173,7 @@ function CollapsibleSection({
 	return (
 		<div
 			className={cn(
-				"border border-slate-800/60 rounded-xl overflow-hidden bg-slate-900/10",
+				"relative border border-slate-800/60 rounded-xl bg-slate-900/10",
 				className,
 			)}
 		>
