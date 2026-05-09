@@ -1,0 +1,15 @@
+[package]
+name = "oc-config"
+version = "0.1.0"
+description = "Standalone OpenCode and Oh-My-OpenAgent settings"
+authors = ["OC Config"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }

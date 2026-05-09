@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fetch-schema"
+description = "Enables the fetch_schema command without any pre-configured scope."
+commands.allow = ["fetch_schema"]
+
+[[permission]]
+identifier = "deny-fetch-schema"
+description = "Denies the fetch_schema command without any pre-configured scope."
+commands.deny = ["fetch_schema"]

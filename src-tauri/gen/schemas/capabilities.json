@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default permissions for OC Config","local":true,"windows":["main"],"permissions":["core:default","allow-read-config","allow-save-config","allow-backup-config","allow-restore-config","allow-list-presets","allow-save-preset","allow-load-preset","allow-list-models","allow-fetch-schema"]}}
