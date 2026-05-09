@@ -1,13 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-	FileJson,
-	RotateCcw,
-	Save,
-	Settings as SettingsIcon,
-	ShieldAlert,
-} from "lucide-react";
+import { FileJson, RotateCcw, Save, ShieldAlert } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { DynamicFormFields } from "./DynamicFormFields";
@@ -226,24 +220,8 @@ export function OpencodeConfigSettings({
 
 	return (
 		<div className="flex flex-col">
-			<div className="flex-none bg-[#0B0E14] border-b border-slate-800/60 pb-6 mb-6 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
-				<div className="flex items-center gap-3">
-					<div className="w-10 h-10 rounded-xl bg-blue-500/10 ring-1 ring-blue-500/20 flex items-center justify-center text-blue-400 shadow-lg shadow-blue-500/10">
-						<SettingsIcon className="w-5 h-5 animate-spin-slow" />
-					</div>
-					<div>
-						<div className="flex items-center gap-2">
-							<span className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] leading-none">
-								Runtime Environment
-							</span>
-						</div>
-						<p className="text-xl font-black text-white tracking-tight leading-none mt-1">
-							Configuration <span className="text-slate-600">File</span>
-						</p>
-					</div>
-				</div>
-
-				<div className="flex items-center gap-3 flex-wrap">
+			<div className="flex-none bg-[#0B0E14] border-b border-slate-800/60 pb-6 mb-6 shrink-0 flex justify-end">
+				<div className="flex items-center gap-3 flex-wrap justify-end">
 					{/* Config Section */}
 					<div className="flex items-center bg-[#161B26] border border-slate-700 rounded-xl p-1 shadow-sm">
 						<div className="h-8 px-3 text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-2">

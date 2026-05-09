@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { JSONSchema } from "@/lib/json-schema-types";
 import { canRemoveObjectProperty, type ValidationError } from "./schema-utils";
@@ -164,6 +164,122 @@ function DynamicInputField({
 	);
 }
 
+function StyledSelect({
+	value,
+	onChange,
+	options,
+	placeholder = "Select...",
+	disabled,
+	className,
+	allowEmpty = true,
+}: {
+	value: string;
+	onChange: (val: string) => void;
+	options: { value: string; label: string }[];
+	placeholder?: string;
+	disabled?: boolean;
+	className?: string;
+	allowEmpty?: boolean;
+}) {
+	const [isOpen, setIsOpen] = useState(false);
+	const containerRef = useRef<HTMLDivElement>(null);
+	const selectedOption = options.find((option) => option.value === value);
+	const selectedLabel = selectedOption?.label ?? placeholder;
+	const isPlaceholder = !selectedOption;
+
+	useEffect(() => {
+		if (!isOpen) return;
+
+		const handlePointerDown = (event: PointerEvent) => {
+			if (!containerRef.current?.contains(event.target as Node)) {
+				setIsOpen(false);
+			}
+		};
+
+		document.addEventListener("pointerdown", handlePointerDown);
+		return () => document.removeEventListener("pointerdown", handlePointerDown);
+	}, [isOpen]);
+
+	return (
+		<div ref={containerRef} className={cn("relative", className)}>
+			<button
+				type="button"
+				disabled={disabled}
+				onClick={() => setIsOpen((open) => !open)}
+				className={cn(
+					"group flex w-full items-center justify-between gap-3 rounded-xl border border-slate-700 bg-[#161B26] px-4 py-2.5 text-left text-sm text-slate-200",
+					"shadow-sm shadow-black/20 transition-all duration-200",
+					"hover:border-slate-600 hover:bg-[#1A2030] hover:shadow-lg hover:shadow-black/20",
+					"focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 focus:shadow-[0_0_20px_rgba(59,130,246,0.1)]",
+					isOpen &&
+						"border-blue-500/50 bg-[#1A2030] ring-4 ring-blue-500/10 shadow-[0_0_20px_rgba(59,130,246,0.1)]",
+					disabled &&
+						"cursor-not-allowed border-slate-800 bg-slate-900/40 text-slate-600 opacity-60 shadow-none hover:border-slate-800 hover:bg-slate-900/40 hover:shadow-none",
+				)}
+			>
+				<span
+					className={cn(
+						"truncate",
+						isPlaceholder && "text-slate-500",
+						disabled && "text-slate-600",
+					)}
+				>
+					{selectedLabel}
+				</span>
+				<ChevronDown
+					className={cn(
+						"h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 group-hover:text-blue-400",
+						isOpen && "rotate-180 text-blue-400",
+						disabled && "text-slate-700 group-hover:text-slate-700",
+					)}
+				/>
+			</button>
+
+			{isOpen && !disabled && (
+				<div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-xl border border-slate-700/80 bg-[#101521] p-1 shadow-2xl shadow-black/40 ring-1 ring-blue-500/10">
+					<div className="max-h-60 overflow-y-auto custom-scrollbar">
+						{allowEmpty && (
+							<button
+								type="button"
+								onClick={() => {
+									onChange("");
+									setIsOpen(false);
+								}}
+								className={cn(
+									"flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-slate-500 transition-colors hover:bg-blue-500/10 hover:text-blue-300",
+									value === "" && "bg-blue-500/10 text-blue-300",
+								)}
+							>
+								{placeholder}
+							</button>
+						)}
+						{options.map((option) => (
+							<button
+								key={option.value}
+								type="button"
+								onClick={() => {
+									onChange(option.value);
+									setIsOpen(false);
+								}}
+								className={cn(
+									"flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm text-slate-300 transition-colors hover:bg-blue-500/10 hover:text-blue-200",
+									option.value === value &&
+										"bg-blue-500/15 text-blue-200 shadow-inner shadow-blue-500/10",
+								)}
+							>
+								<span className="truncate">{option.label}</span>
+								{option.value === value && (
+									<span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+								)}
+							</button>
+						))}
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
 function DynamicSelectField({
 	label,
 	value,
@@ -186,29 +302,13 @@ function DynamicSelectField({
 					{label}
 				</div>
 			)}
-			<div className="relative">
-				<select
-					value={value ?? ""}
-					onChange={(e) => onChange(e.target.value || "")}
-					disabled={disabled}
-					className={cn(
-						"w-full appearance-none bg-[#161B26] border border-slate-700",
-						"rounded-xl px-4 py-2.5 pr-10 text-sm text-slate-200 cursor-pointer",
-						"hover:border-slate-600 transition-all",
-						"focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 focus:shadow-[0_0_20px_rgba(59,130,246,0.1)]",
-						value === undefined && "text-slate-500",
-						disabled && "opacity-50 cursor-not-allowed hover:border-slate-700",
-					)}
-				>
-					<option value="">{placeholder ?? "Select..."}</option>
-					{options.map((opt) => (
-						<option key={opt} value={opt}>
-							{opt}
-						</option>
-					))}
-				</select>
-				<ChevronDown className="absolute right-3 top-3 w-4 h-4 text-slate-500 pointer-events-none" />
-			</div>
+			<StyledSelect
+				value={value ?? ""}
+				onChange={onChange}
+				options={options.map((option) => ({ value: option, label: option }))}
+				placeholder={placeholder}
+				disabled={disabled}
+			/>
 		</div>
 	);
 }
@@ -292,21 +392,15 @@ function DynamicArrayField({
 					return (
 						<div key={`${index}-${item}`} className="flex gap-2">
 							{items?.enum ? (
-								<div className="relative flex-1">
-									<select
-										value={item}
-										onChange={(e) => handleChange(index, e.target.value)}
-										className="w-full appearance-none bg-[#161B26] border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-200 cursor-pointer hover:border-slate-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 transition-all"
-									>
-										<option value="">Select...</option>
-										{items.enum.map((opt) => (
-											<option key={String(opt)} value={String(opt)}>
-												{String(opt)}
-											</option>
-										))}
-									</select>
-									<ChevronDown className="absolute right-3 top-2.5 w-4 h-4 text-slate-500 pointer-events-none" />
-								</div>
+								<StyledSelect
+									value={item}
+									onChange={(newValue) => handleChange(index, newValue)}
+									options={items.enum.map((option) => ({
+										value: String(option),
+										label: String(option),
+									}))}
+									className="flex-1"
+								/>
 							) : (
 								<input
 									type="text"
@@ -1015,10 +1109,10 @@ function DynamicField({
 		return (
 			<div className="space-y-2">
 				{fieldLabel && <FieldLabel label={fieldLabel} action={labelAction} />}
-				<select
-					value={currentVariantIndex}
-					onChange={(e) => {
-						const newIndex = parseInt(e.target.value);
+				<StyledSelect
+					value={String(currentVariantIndex)}
+					onChange={(newValue) => {
+						const newIndex = parseInt(newValue);
 						const newVariant = variants[newIndex];
 						// Initialize with default value for new type
 						if (newVariant.type === "array") onChange([]);
@@ -1028,14 +1122,13 @@ function DynamicField({
 						else if (newVariant.type === "boolean") onChange(false);
 						else onChange(null);
 					}}
-					className="w-full bg-[#161B26] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-slate-200 mb-4 cursor-pointer hover:border-slate-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 transition-all"
-				>
-					{variants.map((v, i) => (
-						<option key={`${v.type}-${i}`} value={i}>
-							{getVariantLabel(v, i)}
-						</option>
-					))}
-				</select>
+					options={variants.map((v, i) => ({
+						value: String(i),
+						label: getVariantLabel(v, i),
+					}))}
+					className="mb-4"
+					allowEmpty={false}
+				/>
 				<DynamicField
 					schema={currentVariant}
 					value={value}
