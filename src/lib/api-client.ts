@@ -1,4 +1,5 @@
 import $RefParser from "@apidevtools/json-schema-ref-parser";
+import type { FileInfo } from "@apidevtools/json-schema-ref-parser";
 import { invoke } from "@tauri-apps/api/core";
 import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 import type { JSONSchema } from "./json-schema-types";
@@ -62,10 +63,29 @@ class ApiClient {
 	readonly schema = {
 		fetch: async (url: string): Promise<{ schema: JSONSchema }> => {
 			const rawSchema = await invoke<unknown>("fetch_schema", { url });
-			const resolved = await $RefParser.dereference(rawSchema as object, {
-				continueOnError: false,
-			});
-			return { schema: forceAdditionalPropertiesFalse(resolved) as JSONSchema };
+			try {
+				const resolved = await $RefParser.dereference(rawSchema as object, {
+					resolve: {
+						http: {
+							canRead: /^https?:\/\//i,
+							read: async (file: FileInfo) => {
+								const schema = await invoke<unknown>("fetch_schema", {
+									url: file.url,
+								});
+								return JSON.stringify(schema);
+							},
+						},
+					},
+					continueOnError: false,
+				});
+				return {
+					schema: forceAdditionalPropertiesFalse(resolved) as JSONSchema,
+				};
+			} catch {
+				return {
+					schema: forceAdditionalPropertiesFalse(rawSchema) as JSONSchema,
+				};
+			}
 		},
 	};
 
