@@ -107,6 +107,6 @@ scripts/copy-next-assets.mjs     Post-build asset copy step
 
 ## Notes
 
-- Production frontend output is static (`next export` style via `output: "export"`) and is copied to `out/` for Tauri packaging.
+- Production frontend output uses Next.js static export mode (`output: "export"`) and is copied to `out/` for Tauri packaging.
 - The Tauri backend reads and writes local config files directly, so changes affect the real files in your OpenCode config directory.
 - Backups are written as `<config-file>.backup` next to the original file.

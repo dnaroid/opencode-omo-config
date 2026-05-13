@@ -122,6 +122,8 @@ export async function listModelsFromOpenCode(): Promise<{
 
 	return {
 		baseUrl,
-		models: [...models.values()].sort((a, b) => a.name.localeCompare(b.name)),
+		models: [...models.values()]
+			.filter((m) => m.connected)
+			.sort((a, b) => a.name.localeCompare(b.name)),
 	};
 }

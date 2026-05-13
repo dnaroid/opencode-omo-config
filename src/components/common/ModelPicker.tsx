@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { WheelEvent } from "react";
 import { Cpu, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OpencodeModel } from "@/types/kanban";
@@ -56,6 +57,48 @@ interface ModelPickerProps {
 
 const getModelDisplayName = (name: string) => name.split("/").pop() || name;
 export const getModelProvider = (name: string) => name.split("/")[0] || "local";
+
+function normalizeSearch(value: string) {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim();
+}
+
+function getFuzzyScore(modelName: string, query: string) {
+	const normalizedQuery = normalizeSearch(query);
+	if (!normalizedQuery) return 0;
+
+	const searchable = normalizeSearch(
+		`${getModelProvider(modelName)} ${getModelDisplayName(modelName)} ${modelName}`,
+	);
+	const exactIndex = searchable.indexOf(normalizedQuery);
+	if (exactIndex !== -1) return exactIndex;
+
+	let queryIndex = 0;
+	let gapPenalty = 0;
+	let previousMatchIndex = -1;
+
+	for (
+		let searchableIndex = 0;
+		searchableIndex < searchable.length;
+		searchableIndex++
+	) {
+		if (searchable[searchableIndex] !== normalizedQuery[queryIndex]) continue;
+
+		if (previousMatchIndex !== -1) {
+			gapPenalty += searchableIndex - previousMatchIndex - 1;
+		}
+		previousMatchIndex = searchableIndex;
+		queryIndex++;
+
+		if (queryIndex === normalizedQuery.length) {
+			return 1000 + gapPenalty + searchableIndex - normalizedQuery.length;
+		}
+	}
+
+	return null;
+}
 
 const PROVIDER_STYLES = [
 	{
@@ -155,6 +198,9 @@ export function ModelPicker({
 }: ModelPickerProps) {
 	const [isPickerOpen, setIsPickerOpen] = useState(false);
 	const [hoveredModel, setHoveredModel] = useState<string | null>(null);
+	const [searchQuery, setSearchQuery] = useState("");
+	const searchInputRef = useRef<HTMLInputElement>(null);
+	const resultsListRef = useRef<HTMLDivElement>(null);
 
 	const [baseName, variant] = value ? value.split("#") : [null, null];
 	const currentModel = models.find((m) => m.name === baseName);
@@ -165,6 +211,30 @@ export function ModelPicker({
 	const modelStyles = currentModel
 		? getProviderStyle(currentModel.name)
 		: DIFFICULTY_STYLES[displayDifficulty] || DIFFICULTY_STYLES.easy;
+	const filteredModels = useMemo(() => {
+		const normalizedQuery = normalizeSearch(searchQuery);
+		if (!normalizedQuery) return models;
+
+		return models
+			.map((model, index) => ({
+				model,
+				index,
+				score: getFuzzyScore(model.name, normalizedQuery),
+			}))
+			.filter(
+				(
+					entry,
+				): entry is { model: OpencodeModel; index: number; score: number } =>
+					entry.score !== null,
+			)
+			.sort((a, b) => a.score - b.score || a.index - b.index)
+			.map((entry) => entry.model);
+	}, [models, searchQuery]);
+
+	useEffect(() => {
+		if (!isPickerOpen) return;
+		searchInputRef.current?.focus();
+	}, [isPickerOpen]);
 
 	const handleSelectModel = (modelName: string | null, variant?: string) => {
 		if (modelName === null) {
@@ -174,15 +244,30 @@ export function ModelPicker({
 			onChange(fullId);
 		}
 		setIsPickerOpen(false);
+		setSearchQuery("");
+	};
+
+	const handleTogglePicker = () => {
+		if (disabled) return;
+		if (isPickerOpen) setSearchQuery("");
+		setIsPickerOpen(!isPickerOpen);
+	};
+
+	const handlePopupWheel = (event: WheelEvent<HTMLDivElement>) => {
+		const resultsList = resultsListRef.current;
+		if (!resultsList?.contains(event.target as Node)) {
+			event.preventDefault();
+		}
+		event.stopPropagation();
 	};
 
 	return (
 		<div className={cn("flex flex-wrap items-center gap-2", className)}>
-			<div className="relative" onMouseLeave={() => setIsPickerOpen(false)}>
+			<div className={cn("relative", isPickerOpen && "z-[9999]")}>
 				<button
 					type="button"
 					disabled={disabled}
-					onClick={() => !disabled && setIsPickerOpen(!isPickerOpen)}
+					onClick={handleTogglePicker}
 					className={cn(
 						"w-max flex items-center justify-between text-[11px] transition-all whitespace-nowrap cursor-pointer",
 						borderless
@@ -238,70 +323,101 @@ export function ModelPicker({
 				</button>
 
 				{isPickerOpen && (
-					<div className="absolute left-0 top-full mt-0 min-w-full w-max max-h-64 overflow-y-auto no-scrollbar bg-[#161B26] border border-slate-800 rounded-xl shadow-2xl z-20 py-2 animate-in fade-in zoom-in-95 duration-200">
+					<div
+						onWheel={handlePopupWheel}
+						className="absolute left-0 top-full mt-0 min-w-72 w-max overflow-hidden overscroll-contain bg-[#161B26] border border-slate-800 rounded-xl shadow-2xl z-[9999] py-2 animate-in fade-in zoom-in-95 duration-200"
+					>
 						{models.length === 0 ? (
 							<div className="px-3 py-4 text-center text-xs text-slate-500 italic">
 								No models available.
 							</div>
 						) : (
 							<>
-								{allowAuto && (
-									<button
-										type="button"
-										onClick={() => handleSelectModel(null)}
-										onMouseEnter={() => setHoveredModel("auto")}
-										onMouseLeave={() => setHoveredModel(null)}
-										className={cn(
-											"w-full flex items-center px-3 py-2 rounded-lg text-xs transition-all text-left",
-											!value || hoveredModel === "auto"
-												? cn(modelStyles.bg, modelStyles.text)
-												: "text-slate-400 opacity-70",
-										)}
-									>
-										<span className="italic">Auto (based on difficulty)</span>
-									</button>
-								)}
-								{models.map((model) => {
-									const isSelected = baseName === model.name;
-									const isHovered = hoveredModel === model.name;
-									const styles = getProviderStyle(model.name);
-									return (
+								<div className="px-2 pb-2">
+									<input
+										type="search"
+										ref={searchInputRef}
+										value={searchQuery}
+										onChange={(event) => setSearchQuery(event.target.value)}
+										onKeyDown={(event) => {
+											if (event.key === "Escape") {
+												setIsPickerOpen(false);
+												setSearchQuery("");
+											}
+										}}
+										placeholder="Search provider/model..."
+										aria-label="Search models by provider and model"
+										className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-2.5 py-1.5 text-xs text-slate-200 outline-none placeholder:text-slate-600 focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/20"
+									/>
+								</div>
+								<div
+									ref={resultsListRef}
+									className="max-h-56 overflow-y-scroll overscroll-contain px-2 pr-3 pb-1 [scrollbar-gutter:stable] [scrollbar-color:theme(colors.slate.600)_theme(colors.slate.900)] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-900/60 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-600"
+								>
+									{allowAuto && (
 										<button
 											type="button"
-											key={model.name}
-											onClick={() => {
-												const variants = model.variants
-													? model.variants.split(",").map((v) => v.trim())
-													: [];
-												const defaultVariant =
-													showVariantSelector && variants.length > 0
-														? variants[0]
-														: undefined;
-												handleSelectModel(model.name, defaultVariant);
-											}}
-											onMouseEnter={() => setHoveredModel(model.name)}
+											onClick={() => handleSelectModel(null)}
+											onMouseEnter={() => setHoveredModel("auto")}
 											onMouseLeave={() => setHoveredModel(null)}
 											className={cn(
-												"w-full flex items-center px-3 py-2 rounded-lg text-xs transition-all text-left cursor-pointer",
-												isSelected || isHovered
-													? cn(styles.bg, styles.text)
-													: cn(styles.text, "opacity-70"),
+												"w-full flex items-center px-3 py-2 rounded-lg text-xs transition-all text-left",
+												!value || hoveredModel === "auto"
+													? cn(modelStyles.bg, modelStyles.text)
+													: "text-slate-400 opacity-70",
 											)}
 										>
-											<span className="font-medium">
-												{getModelDisplayName(model.name)}
-											</span>
-											<span
-												className={cn(
-													"ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ring-1",
-													styles.badge,
-												)}
-											>
-												{getModelProvider(model.name)}
-											</span>
+											<span className="italic">Auto (based on difficulty)</span>
 										</button>
-									);
-								})}
+									)}
+									{filteredModels.length === 0 ? (
+										<div className="px-3 py-4 text-center text-xs text-slate-500 italic">
+											No models match “{searchQuery}”.
+										</div>
+									) : (
+										filteredModels.map((model) => {
+											const isSelected = baseName === model.name;
+											const isHovered = hoveredModel === model.name;
+											const styles = getProviderStyle(model.name);
+											return (
+												<button
+													type="button"
+													key={model.name}
+													onClick={() => {
+														const variants = model.variants
+															? model.variants.split(",").map((v) => v.trim())
+															: [];
+														const defaultVariant =
+															showVariantSelector && variants.length > 0
+																? variants[0]
+																: undefined;
+														handleSelectModel(model.name, defaultVariant);
+													}}
+													onMouseEnter={() => setHoveredModel(model.name)}
+													onMouseLeave={() => setHoveredModel(null)}
+													className={cn(
+														"w-full flex items-center px-3 py-2 rounded-lg text-xs transition-all text-left cursor-pointer",
+														isSelected || isHovered
+															? cn(styles.bg, styles.text)
+															: cn(styles.text, "opacity-70"),
+													)}
+												>
+													<span className="font-medium">
+														{getModelDisplayName(model.name)}
+													</span>
+													<span
+														className={cn(
+															"ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ring-1",
+															styles.badge,
+														)}
+													>
+														{getModelProvider(model.name)}
+													</span>
+												</button>
+											);
+										})
+									)}
+								</div>
 							</>
 						)}
 					</div>

@@ -378,6 +378,7 @@ async fn list_models() -> Result<ModelResponse, String> {
             });
         }
     }
+    models.retain(|m| m.connected);
     models.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(ModelResponse { base_url, models })
 }

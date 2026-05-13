@@ -164,14 +164,16 @@ class ApiClient {
 		listModels: async (): Promise<{ models: OpencodeModel[] }> => {
 			const response = await invoke<{ models: RawModel[] }>("list_models");
 			return {
-				models: response.models.map((model) => ({
-					name: model.name,
-					variants: model.variants?.join(","),
-					contextLimit: model.contextLimit,
-					connected: model.connected,
-					enabled: true,
-					difficulty: model.connected ? "medium" : "easy",
-				})),
+				models: response.models
+					.filter((model) => model.connected)
+					.map((model) => ({
+						name: model.name,
+						variants: model.variants?.join(","),
+						contextLimit: model.contextLimit,
+						connected: model.connected,
+						enabled: true,
+						difficulty: "medium",
+					})),
 			};
 		},
 	};
