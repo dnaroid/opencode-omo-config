@@ -17,6 +17,16 @@ src-tauri/target/
 .env.*
 !.env.example
 
+# Apple signing/notarization secrets
+.env.signing.local
+src-tauri/tauri.signing*.json
+*.p12
+*.cer
+*.provisionprofile
+*.mobileprovision
+AuthKey_*.p8
+private_keys/
+
 # logs
 *.log
 npm-debug.log*

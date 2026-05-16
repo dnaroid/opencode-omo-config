@@ -25,7 +25,10 @@
 	},
 	"bundle": {
 		"active": true,
-		"targets": ["app"],
-		"icon": ["icons/icon.png", "icons/icon.icns"]
+		"targets": ["app", "dmg"],
+		"icon": ["icons/icon.png", "icons/icon.icns"],
+		"macOS": {
+			"hardenedRuntime": true
+		}
 	}
 }

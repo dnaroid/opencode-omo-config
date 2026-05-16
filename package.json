@@ -9,12 +9,15 @@
 		"postbuild": "node scripts/copy-next-assets.mjs",
 		"tauri": "tauri",
 		"tauri:dev": "tauri dev",
-		"tauri:build": "tauri build",
+		"tauri:build": "tauri build --no-sign",
+		"tauri:build:app": "tauri build --bundles app --no-sign",
+		"tauri:build:dmg": "tauri build --bundles dmg --no-sign",
+		"tauri:build:mac": "tauri build --bundles app,dmg --no-sign",
+		"tauri:build:mac:universal": "tauri build --target universal-apple-darwin --bundles app,dmg --no-sign",
 		"tauri:open": "open \"src-tauri/target/release/bundle/macos/OC Config.app\"",
 		"tauri:run": "open -n \"src-tauri/target/release/bundle/macos/OC Config.app\"",
 		"start": "next start --port 3101",
-		"typecheck": "tsc --noEmit",
-		"tauri:build:dmg": "tauri build --bundles dmg"
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@apidevtools/json-schema-ref-parser": "^15.2.2",
