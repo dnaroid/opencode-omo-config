@@ -346,30 +346,141 @@ function DynamicToggleField({
 	);
 }
 
+function getSchemaType(schema?: JSONSchema): string | undefined {
+	if (!schema?.type) return undefined;
+	return Array.isArray(schema.type) ? schema.type[0] : schema.type;
+}
+
+function cloneDefaultValue(value: unknown): unknown {
+	if (value === undefined) return undefined;
+	try {
+		return structuredClone(value);
+	} catch {
+		try {
+			return JSON.parse(JSON.stringify(value));
+		} catch {
+			return value;
+		}
+	}
+}
+
+function getDefaultValueForSchema(schema?: JSONSchema): unknown {
+	if (!schema) return "";
+	if (schema.default !== undefined) return cloneDefaultValue(schema.default);
+	if (schema.const !== undefined) return cloneDefaultValue(schema.const);
+	if (schema.anyOf?.length || schema.oneOf?.length) {
+		return getDefaultValueForSchema((schema.anyOf ?? schema.oneOf)?.[0]);
+	}
+
+	const type = getSchemaType(schema);
+	if (type === "array") return [];
+	if (type === "object") return {};
+	if (type === "number" || type === "integer") return 0;
+	if (type === "boolean") return false;
+	return "";
+}
+
+function valueMatchesSchema(schema: JSONSchema | undefined, value: unknown): boolean {
+	if (!schema) return true;
+	if (schema.const !== undefined) return value === schema.const;
+	if (schema.enum?.length) return schema.enum.includes(value as never);
+	if (schema.anyOf?.length) {
+		return schema.anyOf.some((variant) => valueMatchesSchema(variant, value));
+	}
+	if (schema.oneOf?.length) {
+		return schema.oneOf.some((variant) => valueMatchesSchema(variant, value));
+	}
+
+	const type = getSchemaType(schema);
+	if (!type) return true;
+	if (type === "array") {
+		if (!Array.isArray(value)) return false;
+		const itemSchema = schema.items as JSONSchema | undefined;
+		return (
+			value.length === 0 ||
+			value.every((item) => valueMatchesSchema(itemSchema, item))
+		);
+	}
+	if (type === "object") {
+		return value !== null && typeof value === "object" && !Array.isArray(value);
+	}
+	if (type === "integer") return Number.isInteger(value);
+	return typeof value === type;
+}
+
+function formatSchemaTypeLabel(schema: JSONSchema, index?: number): string {
+	if (schema.title) return schema.title;
+
+	const type = getSchemaType(schema);
+	if (type === "string") return "String";
+	if (type === "object") return "Object";
+	if (type === "boolean") return "Boolean";
+	if (type === "number") return "Number";
+	if (type === "integer") return "Integer";
+	if (type === "array") return "Array";
+	return index === undefined ? "Value" : `Variant ${index + 1}`;
+}
+
+function getVariantLabel(v: JSONSchema, index: number): string {
+	if (v.title) return v.title;
+	if (v.type === "array" && v.items) {
+		const items = v.items as JSONSchema;
+		const itemVariants = items.anyOf ?? items.oneOf;
+		if (itemVariants?.length) {
+			return `Mixed array (${itemVariants
+				.map((item, i) => formatSchemaTypeLabel(item, i).toLowerCase())
+				.join(" | ")})`;
+		}
+
+		const itemType = getSchemaType(items);
+		if (itemType === "string") return "Array of strings";
+		if (itemType === "object") return "Array of objects";
+		if (itemType === "number") return "Array of numbers";
+		if (itemType === "integer") return "Array of integers";
+		if (itemType === "boolean") return "Array of booleans";
+		return "Array";
+	}
+
+	return `${formatSchemaTypeLabel(v, index)} value`;
+}
+
 function DynamicArrayField({
 	label,
 	value,
 	onChange,
 	items,
 	labelAction,
+	path,
+	models,
+	modelVariants,
+	entityModel,
+	depth = 0,
+	validationErrors = [],
 }: {
 	label: string;
-	value: string[] | undefined;
-	onChange: (val: string[]) => void;
+	value: unknown[] | undefined;
+	onChange: (val: unknown[]) => void;
 	items?: JSONSchema;
 	labelAction?: React.ReactNode;
+	path: string;
+	models?: OpencodeModel[];
+	modelVariants?: string[];
+	entityModel?: string;
+	depth?: number;
+	validationErrors?: ValidationError[];
 }) {
 	const arr = Array.isArray(value) ? value : [];
+	const itemSchema = items as JSONSchema | undefined;
 
 	const handleAdd = () => {
-		onChange([...arr, ""]);
+		onChange([...arr, getDefaultValueForSchema(itemSchema)]);
 	};
 
 	const handleRemove = (index: number) => {
 		onChange(arr.filter((_, i) => i !== index));
 	};
 
-	const handleChange = (index: number, newValue: string) => {
+	const handleChange = (index: number, newValue: unknown) => {
 		const updated = [...arr];
 		updated[index] = newValue;
 		onChange(updated);
@@ -389,33 +500,34 @@ function DynamicArrayField({
 			</div>
 			<div className="space-y-2">
 				{arr.map((item, index) => {
+					const effectiveItemSchema = itemSchema ?? inferSchema(item);
 					return (
-						<div key={index} className="flex gap-2">
-							{items?.enum ? (
-								<StyledSelect
-									value={item}
-									onChange={(newValue) => handleChange(index, newValue)}
-									options={items.enum.map((option) => ({
-										value: String(option),
-										label: String(option),
-									}))}
-									className="flex-1"
-								/>
-							) : (
-								<input
-									type="text"
-									value={item}
-									onChange={(e) => handleChange(index, e.target.value)}
-									className="flex-1 bg-[#161B26] border border-slate-700 rounded-xl px-4 py-2 text-sm text-slate-200 hover:border-slate-600 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500/50 transition-all placeholder:text-slate-500"
-								/>
-							)}
-							<button
-								type="button"
-								onClick={() => handleRemove(index)}
-								className="text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg px-2 transition-colors"
-							>
-								×
-							</button>
+						<div
+							key={index}
+							className="rounded-xl border border-slate-800/60 bg-slate-900/20 p-3"
+						>
+							<DynamicField
+								schema={effectiveItemSchema}
+								value={item}
+								onChange={(newValue) => handleChange(index, newValue)}
+								label={`Item ${index + 1}`}
+								path={`${path}.${index}`}
+								models={models}
+								modelVariants={modelVariants}
+								entityModel={entityModel}
+								depth={depth + 1}
+								validationErrors={validationErrors}
+								labelAction={
+									<button
+										type="button"
+										onClick={() => handleRemove(index)}
+										className="text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg p-1 transition-colors"
+										title="Remove item"
+									>
+										<X className="w-3.5 h-3.5" />
+									</button>
+								}
+							/>
 						</div>
 					);
 				})}
@@ -859,6 +971,10 @@ function DynamicField({
 	entityModel,
 	validationErrors = [],
 }: FieldProps) {
+	const [selectedVariantIndex, setSelectedVariantIndex] = useState<
+		number | null
+	>(null);
+
 	if (!schema) return null;
 
 	const fieldLabel = schema.title ?? label ?? path.split(".").pop() ?? "";
@@ -1046,10 +1162,16 @@ function DynamicField({
 		return renderWithErrors(
 			<DynamicArrayField
 				label={fieldLabel}
-				value={value as string[] | undefined}
+				value={value as unknown[] | undefined}
 				onChange={(v) => onChange(v.length > 0 ? v : undefined)}
 				items={schema.items as JSONSchema | undefined}
 				labelAction={labelAction}
+				path={path}
+				models={models}
+				modelVariants={modelVariants}
+				entityModel={entityModel}
+				depth={depth}
+				validationErrors={validationErrors}
 			/>,
 		);
 	}
@@ -1066,6 +1188,7 @@ function DynamicField({
 				depth={depth + 1}
 				label={label}
 				labelAction={labelAction}
+				entityModel={entityModel}
 				validationErrors={validationErrors}
 			/>
 		);
@@ -1075,60 +1198,50 @@ function DynamicField({
 		const variants = (schema.oneOf || schema.anyOf) as JSONSchema[];
 
 		const getCurrentVariantIndex = (): number => {
-			if (value === null || value === undefined) return 0;
-			for (let i = 0; i < variants.length; i++) {
-				const v = variants[i];
-				if (v.type === "array" && Array.isArray(value)) return i;
+			if (selectedVariantIndex !== null) {
+				const selectedVariant = variants[selectedVariantIndex];
 				if (
-					v.type === "object" &&
-					typeof value === "object" &&
-					!Array.isArray(value)
-				)
-					return i;
-				if (v.type === "string" && typeof value === "string") return i;
-				if (v.type === "number" && typeof value === "number") return i;
-				if (v.type === "boolean" && typeof value === "boolean") return i;
+					selectedVariant &&
+					(value === null ||
+						value === undefined ||
+						valueMatchesSchema(selectedVariant, value))
+				) {
+					return selectedVariantIndex;
+				}
 			}
-			return 0;
+
+			if (value === null || value === undefined) return 0;
+			const exactIndex = variants.findIndex((variant) =>
+				valueMatchesSchema(variant, value),
+			);
+			return exactIndex >= 0 ? exactIndex : 0;
 		};
 
 		const currentVariantIndex = getCurrentVariantIndex();
 		const currentVariant = variants[currentVariantIndex];
 
-		// Get label for variant
-		const getVariantLabel = (v: JSONSchema, index: number): string => {
-			if (v.title) return v.title;
-			if (v.type === "array" && v.items) {
-				const items = v.items as JSONSchema;
-				return `Array<${items.type || "items"}>`;
-			}
-			const typeStr = Array.isArray(v.type) ? v.type[0] : v.type;
-			return typeStr || `Variant ${index + 1}`;
-		};
-
 		return (
 			<div className="space-y-2">
 				{fieldLabel && <FieldLabel label={fieldLabel} action={labelAction} />}
-				<StyledSelect
-					value={String(currentVariantIndex)}
-					onChange={(newValue) => {
-						const newIndex = parseInt(newValue);
-						const newVariant = variants[newIndex];
-						// Initialize with default value for new type
-						if (newVariant.type === "array") onChange([]);
-						else if (newVariant.type === "object") onChange({});
-						else if (newVariant.type === "string") onChange("");
-						else if (newVariant.type === "number") onChange(0);
-						else if (newVariant.type === "boolean") onChange(false);
-						else onChange(null);
-					}}
-					options={variants.map((v, i) => ({
-						value: String(i),
-						label: getVariantLabel(v, i),
-					}))}
-					className="mb-4"
-					allowEmpty={false}
-				/>
+				<div className="mb-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-2.5 space-y-1.5">
+					<div className="text-[10px] font-black uppercase tracking-wider text-blue-300/80">
+						Value type
+					</div>
+					<StyledSelect
+						value={String(currentVariantIndex)}
+						onChange={(newValue) => {
+							const newIndex = parseInt(newValue);
+							const newVariant = variants[newIndex];
+							setSelectedVariantIndex(newIndex);
+							onChange(getDefaultValueForSchema(newVariant));
+						}}
+						options={variants.map((v, i) => ({
+							value: String(i),
+							label: getVariantLabel(v, i),
+						}))}
+						allowEmpty={false}
+					/>
+				</div>
 				<DynamicField
 					schema={currentVariant}
 					value={value}
@@ -1137,6 +1250,7 @@ function DynamicField({
 					models={models}
 					modelVariants={modelVariants}
 					depth={depth}
+					entityModel={entityModel}
 					validationErrors={validationErrors}
 				/>
 				<FieldErrors errors={fieldErrors} />
