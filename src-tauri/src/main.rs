@@ -353,10 +353,22 @@ async fn fetch_provider_payload(base_url: &str) -> Result<ProviderListPayload, S
 async fn list_models() -> Result<ModelResponse, String> {
     let base_url = start_opencode_server().await?;
     let payload = fetch_provider_payload(&base_url).await?;
-    let connected: BTreeSet<String> = payload.connected.unwrap_or_default().into_iter().collect();
+    let providers = payload.all.or(payload.providers).unwrap_or_default();
+    let connected: BTreeSet<String> = payload
+        .connected
+        .unwrap_or_else(|| {
+            providers
+                .iter()
+                .filter_map(|provider| provider.id.clone())
+                .collect()
+        })
+        .into_iter()
+        .collect();
     let mut models = Vec::new();
-    for provider in payload.all.or(payload.providers).unwrap_or_default() {
-        let provider_id = provider.id.unwrap_or_default();
+    for provider in providers {
+        let Some(provider_id) = provider.id else {
+            continue;
+        };
         for (model_key, model) in provider.models.unwrap_or_default() {
             let model_id = model.id.unwrap_or(model_key);
             let name = if provider_id.is_empty() {
