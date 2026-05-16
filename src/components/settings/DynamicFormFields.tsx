@@ -778,7 +778,14 @@ function ObjectTreeNode({
 	});
 
 	return (
-		<div className="relative border border-slate-800/60 rounded-xl bg-slate-900/20">
+		<div
+			className={cn(
+				"relative border rounded-xl bg-slate-900/20 transition-colors",
+				pathErrors.length > 0
+					? "border-red-500/40 shadow-[0_0_0_1px_rgba(239,68,68,0.08)]"
+					: "border-slate-800/60",
+			)}
+		>
 			<div className="w-full flex items-center gap-2 px-4 py-3 bg-slate-800/40 border-b border-transparent hover:border-slate-800/60">
 				<button
 					type="button"
@@ -994,7 +1001,13 @@ function DynamicField({
 	const fieldLabel = schema.title ?? label ?? path.split(".").pop() ?? "";
 	const fieldErrors = getValidationErrorsForPath(validationErrors, path);
 	const renderWithErrors = (field: React.ReactNode) => (
-		<div className="space-y-1.5">
+		<div
+			className={cn(
+				"space-y-1.5 rounded-xl transition-colors",
+				fieldErrors.length > 0 &&
+					"border border-red-500/40 bg-red-500/5 p-2 shadow-[0_0_0_1px_rgba(239,68,68,0.08)]",
+			)}
+		>
 			{field}
 			<FieldErrors errors={fieldErrors} />
 		</div>
