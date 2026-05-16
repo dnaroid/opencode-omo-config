@@ -763,6 +763,19 @@ function ObjectTreeNode({
 		const targetPath = getValidationTargetPath(error);
 		return targetPath === path || targetPath.startsWith(`${path}.`);
 	});
+	const visibleChildKeys = new Set([
+		...definedProps.map(([key]) => key),
+		...dynamicKeys,
+	]);
+	const nodeVisibleErrors = pathErrors.filter((error) => {
+		const targetPath = getValidationTargetPath(error);
+		if (targetPath === path) return true;
+		if (!targetPath.startsWith(`${path}.`)) return false;
+
+		const relativePath = targetPath.slice(path.length + 1);
+		const childKey = relativePath.split(".")[0];
+		return !visibleChildKeys.has(childKey);
+	});
 
 	return (
 		<div className="relative border border-slate-800/60 rounded-xl bg-slate-900/20">
@@ -836,6 +849,7 @@ function ObjectTreeNode({
 			</div>
 			{isExpanded && (
 				<div className="p-4 space-y-4 bg-slate-900/10">
+					<FieldErrors errors={nodeVisibleErrors} />
 					{definedProps.map(([key, propSchema]) => {
 						const isPresent = Object.prototype.hasOwnProperty.call(obj, key);
 						const canRemoveDefined = isPresent && canRemoveKey(key);
